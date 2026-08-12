@@ -1,0 +1,18 @@
+# dependências
+node_modules/
+
+# ambiente — NUNCA versionar arquivo com token
+.env
+.env.*
+# Exceção: o exemplo tem só os NOMES das variáveis, sem valor nenhum, e é a
+# única documentação de quais variáveis o shim exige.
+!.env.example
+
+# sistema e editores
+.DS_Store
+.vscode/
+.idea/
+
+# logs
+*.log
+npm-debug.log*

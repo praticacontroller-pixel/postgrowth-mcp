@@ -1,0 +1,27 @@
+{
+  "name": "postgrowth-mcp",
+  "version": "0.1.0",
+  "description": "Shim MCP do PostGrowth: expõe as rotas /api/mcp como ferramentas MCP via stdio. Sem Supabase, sem SQL, sem regra de negócio.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "postgrowth-mcp": "bin/postgrowth-mcp.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    ".env.example",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/postgrowth-mcp.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
