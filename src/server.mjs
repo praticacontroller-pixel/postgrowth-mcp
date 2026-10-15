@@ -17,7 +17,7 @@ import {
 import { FERRAMENTAS, POR_NOME } from "./tools.mjs";
 import { redigir } from "./http.mjs";
 
-export const VERSAO = "0.1.0";
+export const VERSAO = "0.2.0";
 
 export function criarServidor(config) {
   const servidor = new Server(

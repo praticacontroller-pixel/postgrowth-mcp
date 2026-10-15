@@ -12,12 +12,13 @@ const NOMES_ESPERADOS = [
   "atualizar_post",
   "consultar_tarefa_clickup",
   "subir_midia_clickup",
+  "subir_midia_arquivos",
 ];
 
 const UUID_CLIENTE = "11111111-2222-4333-8444-555555555555";
 const UUID_POST = "99999999-8888-4777-8666-555555555555";
 
-test("expõe exatamente as sete ferramentas acordadas", () => {
+test("expõe exatamente as oito ferramentas acordadas", () => {
   assert.deepEqual(
     FERRAMENTAS.map((f) => f.name).sort(),
     [...NOMES_ESPERADOS].sort()
@@ -236,4 +237,163 @@ test("atualizar_post sem nenhum campo manda corpo vazio e deixa o servidor recus
   } finally {
     await stub.fechar();
   }
+});
+
+// --- subir_midia_arquivos ---------------------------------------------------
+
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+async function pastaComArquivos(arquivos) {
+  const dir = await mkdtemp(path.join(tmpdir(), "pg-mcp-"));
+  const caminhos = [];
+  for (const [nome, bytes] of arquivos) {
+    const c = path.join(dir, nome);
+    await writeFile(c, bytes);
+    caminhos.push(c);
+  }
+  return { dir, caminhos, limpar: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test("subir_midia_arquivos está marcada como destrutiva e descreve o risco", () => {
+  const f = POR_NOME.get("subir_midia_arquivos");
+  assert.equal(f.annotations.destructiveHint, true);
+  assert.match(f.description, /CONFIRMAÇÃO EXPLÍCITA/i);
+  assert.match(f.description, /NUNCA use em lote/i);
+  assert.match(f.description, /sem passar pelo ClickUp/i);
+  assert.equal(f.inputSchema.properties.confirmar_substituicao.default, false);
+  assert.deepEqual(f.inputSchema.required, ["post_id", "cliente_id", "arquivos"]);
+});
+
+test("subir_midia_arquivos: sobe um arquivo por requisição e grava as URLs na ordem", async () => {
+  const pasta = await pastaComArquivos([
+    ["slide-1.png", Buffer.from("png-um")],
+    ["slide-2.jpg", Buffer.from("jpg-dois")],
+  ]);
+  let n = 0;
+  const stub = await subirStub((p) =>
+    p.caminho.endsWith("/midias/arquivo")
+      ? { status: 200, json: { ok: true, url: `https://cdn.x/${++n}` } }
+      : { status: 200, json: { ok: true, anexadas: p.corpo.urls } }
+  );
+  try {
+    const r = await POR_NOME.get("subir_midia_arquivos").executar(
+      { post_id: UUID_POST, cliente_id: UUID_CLIENTE, arquivos: pasta.caminhos },
+      configDoStub(stub.baseUrl)
+    );
+    assert.equal(r.ok, true, r.erro);
+    assert.equal(stub.recebidos.length, 3);
+
+    const [a, b, gravar] = stub.recebidos;
+    for (const up of [a, b]) {
+      assert.equal(up.metodo, "POST");
+      assert.equal(up.caminho, `/api/mcp/posts/${UUID_POST}/midias/arquivo`);
+      assert.match(up.headers["content-type"], /^multipart\/form-data; boundary=/);
+      assert.match(String(up.corpo), new RegExp(UUID_CLIENTE));
+    }
+    assert.match(String(a.corpo), /slide-1\.png/);
+    assert.match(String(a.corpo), /image\/png/);
+    assert.match(String(b.corpo), /slide-2\.jpg/);
+    assert.match(String(b.corpo), /image\/jpeg/);
+
+    assert.equal(gravar.caminho, `/api/mcp/posts/${UUID_POST}/midias`);
+    assert.deepEqual(gravar.corpo, {
+      cliente_id: UUID_CLIENTE,
+      urls: ["https://cdn.x/1", "https://cdn.x/2"],
+      confirmar_substituicao: false,
+    });
+  } finally {
+    await stub.fechar();
+    await pasta.limpar();
+  }
+});
+
+test("subir_midia_arquivos: arquivo inválido na lista → nada é enviado", async () => {
+  const pasta = await pastaComArquivos([
+    ["ok.png", Buffer.from("x")],
+    ["planilha.xlsx", Buffer.from("x")],
+  ]);
+  const stub = await subirStub(() => ({ status: 200, json: { ok: true, url: "https://cdn.x/1" } }));
+  try {
+    const r = await POR_NOME.get("subir_midia_arquivos").executar(
+      { post_id: UUID_POST, cliente_id: UUID_CLIENTE, arquivos: [...pasta.caminhos, "/nao/existe.png", "relativo.png"] },
+      configDoStub(stub.baseUrl)
+    );
+    assert.equal(r.ok, false);
+    assert.match(r.erro, /Nada foi enviado/);
+    assert.match(r.erro, /planilha\.xlsx/);
+    assert.match(r.erro, /não encontrado/);
+    assert.match(r.erro, /caminho completo/);
+    assert.equal(stub.recebidos.length, 0, "não deveria ter chamado o servidor");
+  } finally {
+    await stub.fechar();
+    await pasta.limpar();
+  }
+});
+
+test("subir_midia_arquivos: arquivo acima do limite da Vercel é recusado antes de enviar", async () => {
+  const pasta = await pastaComArquivos([["grande.png", Buffer.alloc(4_400_001)]]);
+  const stub = await subirStub(() => ({ status: 200, json: { ok: true } }));
+  try {
+    const r = await POR_NOME.get("subir_midia_arquivos").executar(
+      { post_id: UUID_POST, cliente_id: UUID_CLIENTE, arquivos: pasta.caminhos },
+      configDoStub(stub.baseUrl)
+    );
+    assert.equal(r.ok, false);
+    assert.match(r.erro, /limite por arquivo/);
+    assert.equal(stub.recebidos.length, 0);
+  } finally {
+    await stub.fechar();
+    await pasta.limpar();
+  }
+});
+
+test("subir_midia_arquivos: falha no meio não grava o post e avisa quantos já subiram", async () => {
+  const pasta = await pastaComArquivos([
+    ["1.png", Buffer.from("a")],
+    ["2.png", Buffer.from("b")],
+  ]);
+  let n = 0;
+  const stub = await subirStub(() =>
+    ++n === 1
+      ? { status: 200, json: { ok: true, url: "https://cdn.x/1" } }
+      : { status: 502, json: { erro: "ROI fora do ar" } }
+  );
+  try {
+    const r = await POR_NOME.get("subir_midia_arquivos").executar(
+      { post_id: UUID_POST, cliente_id: UUID_CLIENTE, arquivos: pasta.caminhos },
+      configDoStub(stub.baseUrl)
+    );
+    assert.equal(r.ok, false);
+    assert.match(r.erro, /arquivo 2/);
+    assert.match(r.erro, /post NÃO foi alterado/);
+    assert.equal(stub.recebidos.length, 2, "não deveria ter chamado a gravação");
+  } finally {
+    await stub.fechar();
+    await pasta.limpar();
+  }
+});
+
+test("subir_midia_arquivos: confirmar_substituicao só com o booleano true", async () => {
+  const pasta = await pastaComArquivos([["1.png", Buffer.from("a")]]);
+  for (const [valor, esperado] of [["true", "false"], [true, "true"]]) {
+    const stub = await subirStub((p) =>
+      p.caminho.endsWith("/arquivo") ? { status: 200, json: { url: "https://cdn.x/1" } } : { status: 200, json: {} }
+    );
+    try {
+      await POR_NOME.get("subir_midia_arquivos").executar(
+        { post_id: UUID_POST, cliente_id: UUID_CLIENTE, arquivos: pasta.caminhos, confirmar_substituicao: valor },
+        configDoStub(stub.baseUrl)
+      );
+      assert.match(
+        String(stub.recebidos[0].corpo),
+        new RegExp(`name="confirmar_substituicao"\\r\\n\\r\\n${esperado}`)
+      );
+      assert.equal(stub.recebidos[1].corpo.confirmar_substituicao, esperado === "true");
+    } finally {
+      await stub.fechar();
+    }
+  }
+  await pasta.limpar();
 });

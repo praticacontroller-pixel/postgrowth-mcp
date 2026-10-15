@@ -1,6 +1,6 @@
 # postgrowth-mcp
 
-Shim MCP do PostGrowth. Expõe sete ferramentas MCP que viram chamadas HTTP para
+Shim MCP do PostGrowth. Expõe oito ferramentas MCP que viram chamadas HTTP para
 a API protegida do PostGrowth.
 
 ```
@@ -19,14 +19,14 @@ PostGrowth.
 Não precisa clonar nada. Requer **Node 20+** e **git** instalados.
 
 ```bash
-npx -y github:praticacontroller-pixel/postgrowth-mcp#v0.1.0
+npx -y github:praticacontroller-pixel/postgrowth-mcp#v0.2.0
 ```
 
 O programa não é interativo: ele fala JSON-RPC por stdio e é iniciado pelo seu
 cliente MCP. Rodar direto no terminal serve só para conferir que a instalação
 funciona — sem token, ele sai com erro, e é isso mesmo que deve acontecer.
 
-Use sempre a **tag** (`#v0.1.0`). Sem tag, o npm pode servir uma versão em cache
+Use sempre a **tag** (`#v0.2.0`). Sem tag, o npm pode servir uma versão em cache
 e a equipe fica com versões diferentes sem perceber.
 
 ---
@@ -60,7 +60,7 @@ Edite `claude_desktop_config.json`:
   "mcpServers": {
     "postgrowth": {
       "command": "npx",
-      "args": ["-y", "github:praticacontroller-pixel/postgrowth-mcp#v0.1.0"],
+      "args": ["-y", "github:praticacontroller-pixel/postgrowth-mcp#v0.2.0"],
       "env": {
         "POSTGROWTH_MCP_TOKEN": "COLE_AQUI_O_TOKEN_QUE_VOCE_RECEBEU"
       }
@@ -69,7 +69,7 @@ Edite `claude_desktop_config.json`:
 }
 ```
 
-Reinicie o Claude Desktop. As sete ferramentas aparecem na lista de ferramentas
+Reinicie o Claude Desktop. As oito ferramentas aparecem na lista de ferramentas
 disponíveis.
 
 > Esse arquivo passa a conter o token em texto puro. Trate a máquina de acordo:
@@ -80,7 +80,7 @@ disponíveis.
 ```bash
 claude mcp add postgrowth \
   --env POSTGROWTH_MCP_TOKEN=COLE_AQUI_O_TOKEN_QUE_VOCE_RECEBEU \
-  -- npx -y github:praticacontroller-pixel/postgrowth-mcp#v0.1.0
+  -- npx -y github:praticacontroller-pixel/postgrowth-mcp#v0.2.0
 ```
 
 Conferir:
@@ -116,8 +116,9 @@ forma mais fácil de entregá-lo a quem não deve recebê-lo.
 | `atualizar_post` | **escrita** | `PATCH /posts/{id}` |
 | `consultar_tarefa_clickup` | leitura | `GET /clickup/tarefa/{taskId}` |
 | `subir_midia_clickup` | **escrita destrutiva** | `POST /midias` |
+| `subir_midia_arquivos` | **escrita destrutiva** | `POST /posts/{id}/midias/arquivo` (um por arquivo) + `POST /posts/{id}/midias` |
 
-Cada ferramenta chama **uma** rota fixa. Não existe ferramenta genérica de
+Cada ferramenta chama rotas fixas. Não existe ferramenta genérica de
 `fetch`, de URL, de método HTTP nem de SQL — e há teste automatizado que falha
 se alguém tentar acrescentar uma.
 
@@ -145,6 +146,24 @@ O servidor ainda aplica as próprias travas: recusa vínculo ambíguo, recusa
 cliente divergente e recusa substituição não confirmada **antes** de baixar ou
 enviar qualquer arquivo.
 
+### ⚠️ `subir_midia_arquivos` — arte direto do computador, sem ClickUp
+
+Envia imagens ou vídeo **deste computador** direto para um post do PostGrowth.
+Cada arquivo sobe para a biblioteca do ROI SENSEI do cliente e o conjunto vira a
+arte do post, **na ordem da lista** (primeiro arquivo = slide 1).
+
+- Aceita `jpg`, `png`, `webp` e `mp4`, até **4,4 MB por arquivo** (limite de
+  corpo da Vercel). Caminhos completos; `~/` é aceito.
+- Todos os arquivos são conferidos **antes** de qualquer envio. Se um estiver
+  errado, nada sobe.
+- A gravação no post é a **última** chamada. Se um envio falhar no meio, o post
+  não é alterado.
+- Mesmas travas do servidor: cliente conferido contra o post, quantidade por
+  tipo (único e vídeo = 1, carrossel = 2+), e `confirmar_substituicao: true`
+  para apagar arte que já existe.
+- Rode `consultar_post` antes, mostre a mídia atual e peça confirmação.
+  **Nunca em lote.**
+
 ---
 
 ## Exemplos de uso
@@ -159,6 +178,8 @@ enviar qualquer arquivo.
 "Muda a legenda do post <id> e reprograma para dia 05 às 19h."
 
 "Consulta a tarefa ABC123 do ClickUp e me diz a que post ela está vinculada."
+
+"Sobe ~/Downloads/guruseg-01.png e ~/Downloads/guruseg-02.png como arte do post <id> da Guruseg."
 ```
 
 ---
@@ -197,7 +218,8 @@ Estrutura:
 bin/postgrowth-mcp.mjs   entrypoint: valida ambiente e conecta o stdio
 src/config.mjs           variáveis de ambiente e bloqueio de host
 src/http.mjs             único fetch do projeto; Bearer, timeout, redação do token
-src/tools.mjs            as sete ferramentas, cada uma amarrada a uma rota
+src/tools.mjs            as oito ferramentas, cada uma amarrada a rotas fixas
+src/arquivos.mjs         leitura e conferência dos arquivos locais de mídia
 src/server.mjs           servidor MCP (SDK oficial, API de baixo nível)
 ```
 

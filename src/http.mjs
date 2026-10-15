@@ -30,10 +30,10 @@ function montarUrl(baseUrl, segmentos, query) {
  * Faz uma chamada à API MCP do PostGrowth.
  *
  * @param {{token:string, baseUrl:string, timeoutMs:number}} config
- * @param {{metodo:string, segmentos:string[], query?:object, corpo?:object}} pedido
+ * @param {{metodo:string, segmentos:string[], query?:object, corpo?:object, formulario?:FormData}} pedido
  * @returns {Promise<{ok:boolean, status:number, dados?:any, erro?:string}>}
  */
-export async function chamar(config, { metodo, segmentos, query, corpo }, deps = {}) {
+export async function chamar(config, { metodo, segmentos, query, corpo, formulario }, deps = {}) {
   const executar = deps.fetch ?? globalThis.fetch;
   const url = montarUrl(config.baseUrl, segmentos, query);
 
@@ -41,14 +41,15 @@ export async function chamar(config, { metodo, segmentos, query, corpo }, deps =
     Authorization: `Bearer ${config.token}`,
     Accept: "application/json",
   };
-  if (corpo !== undefined) headers["Content-Type"] = "application/json";
+  // Multipart (envio de arquivo): o fetch monta o Content-Type com o boundary.
+  if (corpo !== undefined && formulario === undefined) headers["Content-Type"] = "application/json";
 
   let resposta;
   try {
     resposta = await executar(url, {
       method: metodo,
       headers,
-      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+      body: formulario !== undefined ? formulario : corpo === undefined ? undefined : JSON.stringify(corpo),
       signal: AbortSignal.timeout(config.timeoutMs),
       redirect: "error", // não seguir redirecionamento: o Bearer não pode migrar de host
     });
