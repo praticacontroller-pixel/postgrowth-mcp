@@ -65,7 +65,7 @@ function abrirCliente(env) {
   };
 }
 
-test("initialize + tools/list devolvem as sete ferramentas", async () => {
+test("initialize + tools/list devolvem as oito ferramentas", async () => {
   const stub = await subirStub(() => ({ status: 200, json: { clientes: [] } }));
   const cliente = abrirCliente({
     POSTGROWTH_MCP_TOKEN: TOKEN_FALSO,
@@ -93,6 +93,7 @@ test("initialize + tools/list devolvem as sete ferramentas", async () => {
       "criar_post",
       "listar_clientes",
       "listar_posts_cliente",
+      "subir_midia_arquivos",
       "subir_midia_clickup",
     ]);
     for (const t of lista.result.tools) {
@@ -165,7 +166,7 @@ test("erro do servidor vira isError com mensagem, sem derrubar a sessão nem vaz
 
     // A sessão continua viva depois do erro.
     const lista = await cliente.pedir("tools/list", {});
-    assert.equal(lista.result.tools.length, 7);
+    assert.equal(lista.result.tools.length, 8);
 
     assert.ok(!cliente.stderr.includes(TOKEN_FALSO), "o token apareceu no stderr");
   } finally {

@@ -1,6 +1,6 @@
 {
   "name": "postgrowth-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shim MCP do PostGrowth: expõe as rotas /api/mcp como ferramentas MCP via stdio. Sem Supabase, sem SQL, sem regra de negócio.",
   "license": "MIT",
   "type": "module",
